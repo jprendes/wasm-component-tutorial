@@ -1,12 +1,13 @@
-import { cow } from './cowsay/cowsay.js';
+import { Cowsay } from "./cowsay.js";
 
-log(cow.say('Hello Wasm COWponents!'));
-log("");
-log(cow.say('Hello Wasm OWLponents!', 'owl'));
-
-function log(msg) {
-    if (globalThis.document) {
-        document.body.textContent += `${msg}\n`;
+let { cow } = await Cowsay({
+    host: {
+        log(msg) {
+            globalThis.document?.body?.append?.(`${msg}\n\n`);
+            console.log(msg);
+        }
     }
-    console.log(msg);
-}
+});
+
+console.log(cow.say("Hello Wasm COWponents!"));
+console.log(cow.say("Hello Wasm OWLponents!", "owl"));

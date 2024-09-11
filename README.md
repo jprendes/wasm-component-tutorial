@@ -7,7 +7,7 @@ This guide will show you how to create your first wasm component using Rust, and
 First we need Rust and Node.js
 ```bash
 curl -sSf https://sh.rustup.rs | bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | NODE_VERSION=19 bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | NODE_VERSION=22 bash
 . ~/.bashrc
 ```
 
@@ -43,7 +43,15 @@ world cowsay {
             cow,
             owl
         }
-        say: func(text: string, cow: option<cows>) -> string;
+        record size {
+            width: u32,
+            height: u32
+        }
+        say: func(text: string, cow: option<cows>) -> size;
+    }
+
+    import host: interface {
+        log: func(msg: string);
     }
 }
 ```
@@ -62,9 +70,10 @@ mod bindings {
 }
 ```
 
-This generates a `Cows` enum, and a a `Guest` trait for implementing the behaviour of the `cow` interface
+This generates a `Cows` enum, a `Guest` trait for implementing the behaviour of the `cow` interface, and a `host` module for the implementation of the `host` interface
 ```rust
-use bindings::exports::cow::{ Guest, Cows };
+use bindings::exports::cow::{ Guest, Cows, Size };
+use bindings::host::log;
 ```
 
 Now we just need to create a new type to represent our component, and let `wit-bindgen` know about it
@@ -78,40 +87,50 @@ We can use an empty struct since we don't need to preserve any state.
 Finally we need to implement the `Guest` trait for our component
 ```rust
 impl Guest for Component {
-    fn say(text: String, cow: Option<Cows>) -> String {
+    fn say(text: String, cow: Option<Cows>) -> Size {
         let cow = cow.unwrap_or(Cows::Cow);
-        match cow {
+        let (msg, size) = match cow {
             Cows::Cow => cowsay(text),
             Cows::Owl => owlsay(text),
-        }
+        };
+        log(&msg);
+        size
     }
 }
 
-fn cowsay(text: String) -> String {
+fn cowsay(text: String) -> (String, Size) {
     let dash: String = text.chars().map(|_| '─').collect();
-    format!(
-        r"╭─{dash}─╮
+    let msg = format!(r"
+╭─{dash}─╮
 │ {text} │
 ╰┬{dash}─╯
  │   ^__^
  ╰─  (oo)\_______
      (__)\       )/\
          ||----w |
-         ||     ||"
-    )
+         ||     ||").split_off(1);
+    let size = Size {
+        width: (4 + text.chars().count()).max(20) as _,
+        height: 8,
+    };
+    (msg, size)
 }
 
-fn owlsay(text: String) -> String {
+fn owlsay(text: String) -> (String, Size) {
     let dash: String = text.chars().map(|_| '─').collect();
-    format!(
-        r"         ╭─{dash}─╮
+    let msg = format!(r"
+         ╭─{dash}─╮
          │ {text} │
          ╰┬{dash}─╯
    ___    │
   (o o)  ─╯
  (  V  )
-/--m-m-"
-    )
+/--m-m-").split_off(1);
+    let size = Size {
+        width: (13 + text.chars().count()) as _,
+        height: 7,
+    };
+    (msg, size)
 }
 ```
 
@@ -133,7 +152,7 @@ jco new ./target/wasm32-unknown-unknown/release/cowsay.wasm -o ./cowsay.wasm
 
 3. Finally, we need to generate JS bindings for the component
 ```bash
-jco transpile --out-dir ./js/cowsay/ ./cowsay.wasm
+jco transpile ./cowsay.wasm --out-dir ./js/cowsay/ --instantiation
 ```
 
 ## Running it
@@ -158,7 +177,7 @@ It should print
      (__)\       )/\
          ||----w |
          ||     ||
-
+{ width: 26, height: 8 }
          ╭────────────────────────╮
          │ Hello Wasm OWLponents! │
          ╰┬───────────────────────╯
@@ -166,6 +185,7 @@ It should print
   (o o)  ─╯
  (  V  )
 /--m-m-
+{ width: 35, height: 7 }
 ```
 
 Or you can serve it an open it on your browser at http://localhost:3000
